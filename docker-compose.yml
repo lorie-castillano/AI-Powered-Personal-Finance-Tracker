@@ -1,24 +1,53 @@
-version: "3"
+version: "3.8"
 
 services:
+  db:
+    image: "postgres:latest"
+    restart: always
+    volumes:
+      - ./data/postgresql:/var/lib/postgresql/data
+      - ./backups:/backups
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   auth-service:
     build: ./auth-service
     ports:
       - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
 
   expense-service:
     build: ./expense-service
     ports:
       - "8001:8001"
+    env_file:
+      - .env
     depends_on:
-      - auth-service
+      db:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
 
   ai-service:
     build: ./ai-service
     ports:
       - "8002:8002"
+    env_file:
+      - .env
     depends_on:
       - redis
+      - db
 
   frontend:
     build: ./frontend
@@ -37,3 +66,15 @@ services:
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf
     command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@gmail.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_LISTEN_PORT=5050
+    ports:
+      - "5050:5050"
+    depends_on:
+      db:
+        condition: service_healthy
